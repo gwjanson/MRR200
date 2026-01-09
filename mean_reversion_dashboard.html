@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mean Reversion Analysis - S&P 500</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #e5e7eb;
+        }
+        
+        .container { max-width: 1400px; margin: 0 auto; padding: 24px 16px; }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+        }
+        
+        .glow-green { box-shadow: 0 0 20px rgba(34, 197, 94, 0.3); }
+        .glow-red { box-shadow: 0 0 20px rgba(239, 68, 68, 0.3); }
+        
+        /* Header */
+        .header {
+            padding: 24px;
+            margin-bottom: 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        
+        .header h1 { font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+        .header-subtitle { color: #9ca3af; }
+        .live-indicator { display: flex; align-items: center; gap: 8px; color: #22c55e; font-size: 14px; }
+        
+        .pulse-dot {
+            width: 8px; height: 8px; background: #22c55e; border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        
+        .timestamp { color: #6b7280; font-size: 12px; margin-top: 4px; }
+        
+        /* Stats Grid */
+        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px; }
+        @media (min-width: 768px) { .stats-grid { grid-template-columns: repeat(4, 1fr); } }
+        
+        .stat-card { padding: 16px; }
+        .stat-label { color: #9ca3af; font-size: 14px; margin-bottom: 4px; }
+        .stat-value { font-size: 28px; font-weight: 700; color: #fff; }
+        .stat-value.green { color: #22c55e; }
+        .stat-value.red { color: #ef4444; }
+        .stat-value.blue { color: #3b82f6; }
+        
+        /* View Toggle */
+        .view-toggle { display: flex; gap: 8px; margin-bottom: 16px; }
+        .toggle-btn {
+            padding: 8px 16px; border-radius: 8px; border: none; cursor: pointer;
+            font-size: 14px; transition: all 0.2s;
+        }
+        .toggle-btn.active { background: #3b82f6; color: #fff; }
+        .toggle-btn.inactive { background: #374151; color: #9ca3af; }
+        .toggle-btn:hover { opacity: 0.9; }
+        
+        /* Main Layout */
+        .main-layout { display: grid; gap: 24px; }
+        @media (min-width: 1024px) { .main-layout { grid-template-columns: 1fr 2fr; } }
+        
+        /* Stock List */
+        .stock-list {
+            display: flex; flex-direction: column; gap: 16px;
+            max-height: 800px; overflow-y: auto; padding-right: 8px;
+        }
+        
+        .stock-card { padding: 16px; cursor: pointer; transition: all 0.3s; }
+        .stock-card:hover { transform: scale(1.02); }
+        .stock-card.selected { border-color: #3b82f6; }
+        
+        .stock-card-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+        .stock-ticker { font-size: 20px; font-weight: 700; color: #fff; }
+        
+        .direction-badge { font-size: 12px; padding: 4px 8px; border-radius: 9999px; margin-top: 4px; display: inline-block; }
+        .direction-badge.long { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .direction-badge.short { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        
+        .stock-price { text-align: right; }
+        .stock-price-value { font-size: 24px; font-weight: 700; color: #fff; }
+        .stock-gap { font-size: 14px; }
+        .stock-gap.positive { color: #ef4444; }
+        .stock-gap.negative { color: #22c55e; }
+        
+        .stock-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+        .metric-label { color: #6b7280; font-size: 11px; }
+        .metric-value { font-weight: 700; font-size: 14px; }
+        .metric-value.green { color: #22c55e; }
+        .metric-value.red { color: #ef4444; }
+        .metric-value.blue { color: #3b82f6; }
+        .metric-value.gray { color: #d1d5db; }
+        
+        .sparkline-container { height: 50px; margin-top: 12px; }
+        
+        /* Detail Panel */
+        .detail-panel { padding: 24px; }
+        .detail-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; flex-wrap: wrap; gap: 12px; }
+        .detail-title { font-size: 24px; font-weight: 700; color: #fff; }
+        .detail-subtitle { color: #9ca3af; }
+        
+        .signal-badge { padding: 8px 16px; border-radius: 8px; font-size: 16px; font-weight: 700; }
+        .signal-badge.long { background: rgba(34, 197, 94, 0.2); color: #22c55e; }
+        .signal-badge.short { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+        
+        .chart-container { height: 320px; margin-bottom: 24px; position: relative; }
+        
+        .metrics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+        @media (min-width: 768px) { .metrics-grid { grid-template-columns: repeat(4, 1fr); } }
+        
+        .metric-box { background: rgba(31, 41, 55, 0.5); border-radius: 8px; padding: 12px; }
+        .metric-box-label { color: #6b7280; font-size: 12px; margin-bottom: 4px; }
+        .metric-box-value { font-size: 18px; font-weight: 700; color: #fff; }
+        
+        /* Data Table */
+        .table-container { overflow: hidden; }
+        .table-header { padding: 16px; border-bottom: 1px solid rgba(55, 65, 81, 0.5); }
+        .table-header h3 { font-size: 18px; font-weight: 700; color: #fff; }
+        .data-table-container { overflow-x: auto; }
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th { text-align: left; padding: 12px; color: #9ca3af; font-size: 14px; background: rgba(31, 41, 55, 0.5); }
+        .data-table th.right { text-align: right; }
+        .data-table th.center { text-align: center; }
+        .data-table td { padding: 12px; border-top: 1px solid rgba(55, 65, 81, 0.5); }
+        .data-table tr { cursor: pointer; transition: background 0.2s; }
+        .data-table tbody tr:hover { background: rgba(55, 65, 81, 0.3); }
+        .data-table tr.selected { background: rgba(59, 130, 246, 0.1); }
+        .table-ticker { font-weight: 700; color: #fff; }
+        .table-cell { color: #d1d5db; }
+        .table-cell.right { text-align: right; }
+        .table-cell.center { text-align: center; }
+        
+        .strength-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; }
+        .strength-badge.strong { background: rgba(168, 85, 247, 0.2); color: #a855f7; }
+        .strength-badge.moderate { background: rgba(234, 179, 8, 0.2); color: #eab308; }
+        .strength-badge.weak { background: rgba(107, 114, 128, 0.2); color: #9ca3af; }
+        
+        /* Methodology Panel */
+        .methodology-panel { margin-bottom: 24px; overflow: hidden; }
+        .methodology-toggle {
+            width: 100%; padding: 16px; display: flex; justify-content: space-between; align-items: center;
+            background: transparent; border: none; cursor: pointer; color: #fff; font-weight: 700; font-size: 16px;
+        }
+        .methodology-toggle span:last-child { color: #9ca3af; }
+        .methodology-content { padding: 0 16px 16px; display: none; gap: 16px; }
+        .methodology-content.open { display: grid; }
+        @media (min-width: 768px) { .methodology-content { grid-template-columns: repeat(2, 1fr); } }
+        .methodology-item h4 { color: #3b82f6; font-weight: 700; margin-bottom: 8px; }
+        .methodology-item p { color: #9ca3af; font-size: 14px; line-height: 1.5; }
+        
+        /* Footer */
+        .footer { margin-top: 32px; text-align: center; color: #6b7280; font-size: 14px; }
+        .footer p { margin-top: 4px; }
+        
+        /* Scrollbar */
+        .stock-list::-webkit-scrollbar { width: 6px; }
+        .stock-list::-webkit-scrollbar-track { background: rgba(55, 65, 81, 0.3); border-radius: 3px; }
+        .stock-list::-webkit-scrollbar-thumb { background: rgba(107, 114, 128, 0.5); border-radius: 3px; }
+        .stock-list::-webkit-scrollbar-thumb:hover { background: rgba(107, 114, 128, 0.7); }
+        
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="glass-card header">
+            <div>
+                <h1>Mean Reversion Analysis</h1>
+                <p class="header-subtitle">S&P 500 - LONG (Oversold) Signals</p>
+            </div>
+            <div style="text-align: right;">
+                <div class="live-indicator">
+                    <span class="pulse-dot"></span>
+                    <span>Live Data</span>
+                </div>
+                <p class="timestamp" id="timestamp"></p>
+            </div>
+        </header>
+        
+        <!-- Stats Summary -->
+        <div class="stats-grid" id="stats-grid"></div>
+        
+        <!-- Methodology Panel -->
+        <div class="glass-card methodology-panel">
+            <button class="methodology-toggle" id="methodology-toggle">
+                <span>Methodology & Indicators</span>
+                <span id="methodology-icon">+</span>
+            </button>
+            <div class="methodology-content" id="methodology-content">
+                <div class="methodology-item">
+                    <h4>Z-Score</h4>
+                    <p>Measures standard deviations from 100-day mean. Values beyond +/-2 indicate extreme deviation.</p>
+                </div>
+                <div class="methodology-item">
+                    <h4>RSI (14-day)</h4>
+                    <p>Relative Strength Index. Below 30 = oversold, above 70 = overbought.</p>
+                </div>
+                <div class="methodology-item">
+                    <h4>Half-Life</h4>
+                    <p>Estimated days for price to revert halfway to mean using Ornstein-Uhlenbeck model.</p>
+                </div>
+                <div class="methodology-item">
+                    <h4>Reversion Probability</h4>
+                    <p>Combined probability of reverting to mean within 30 days based on all indicators.</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- View Toggle -->
+        <div class="view-toggle">
+            <button class="toggle-btn active" id="btn-cards">Card View</button>
+            <button class="toggle-btn inactive" id="btn-table">Table View</button>
+        </div>
+        
+        <!-- Main Layout -->
+        <div class="main-layout">
+            <!-- Left Panel -->
+            <div>
+                <div class="stock-list" id="stock-list"></div>
+                <div class="glass-card table-container hidden" id="table-container">
+                    <div class="table-header">
+                        <h3>All Candidates</h3>
+                    </div>
+                    <div class="data-table-container">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Ticker</th>
+                                    <th class="right">Price</th>
+                                    <th class="right">Mean</th>
+                                    <th class="right">Z-Score</th>
+                                    <th class="right">RSI</th>
+                                    <th class="right">Prob</th>
+                                    <th class="center">Signal</th>
+                                    <th class="center">Direction</th>
+                                </tr>
+                            </thead>
+                            <tbody id="table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Panel - Detail Chart -->
+            <div>
+                <div class="glass-card detail-panel" id="detail-panel"></div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <footer class="footer">
+            <p>Mean Reversion Analysis Tool | Data is for informational purposes only</p>
+            <p>Always conduct your own due diligence before trading</p>
+        </footer>
+    </div>
+    
+    <script>
+        // Generate synthetic price history
+        function generatePriceHistory(mean, std, currentZ) {
+            const days = 100;
+            const history = [];
+            const today = new Date();
+            
+            // Use seeded random for consistent data
+            let seed = mean * 1000 + std * 100 + Math.abs(currentZ) * 10;
+            function seededRandom() {
+                seed = (seed * 9301 + 49297) % 233280;
+                return seed / 233280;
+            }
+            
+            for (let i = days - 1; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - i);
+                const progress = (days - 1 - i) / (days - 1);
+                const targetZ = currentZ * progress;
+                const randomZ = (seededRandom() - 0.5) * 1.5;
+                const z = targetZ + randomZ * (1 - progress * 0.7);
+                const price = mean + z * std;
+                
+                history.push({
+                    date: date.toISOString().split('T')[0],
+                    price: Math.max(price, mean * 0.5)
+                });
+            }
+            return history;
+        }
+
+        // Sample data - LONG (Oversold) signals only
+        const stockData = [
+            { ticker: "ARCH", currentPrice: 170.69, meanPrice: 189.63, stdDev: 5.43, zScore: -3.49, rsi: 33.1, gapPercentage: -9.99, reversionProbability: 0.853, halfLife: 8.2, signalStrength: "STRONG", direction: "LONG" },
+            { ticker: "CNOB", currentPrice: 25.41, meanPrice: 30.24, stdDev: 1.52, zScore: -3.18, rsi: 29.8, gapPercentage: -15.97, reversionProbability: 0.827, halfLife: 7.5, signalStrength: "STRONG", direction: "LONG" },
+            { ticker: "CSII", currentPrice: 55.64, meanPrice: 70.85, stdDev: 4.95, zScore: -3.07, rsi: 28.5, gapPercentage: -21.47, reversionProbability: 0.820, halfLife: 7.9, signalStrength: "STRONG", direction: "LONG" },
+            { ticker: "CFFN", currentPrice: 46.66, meanPrice: 61.22, stdDev: 5.24, zScore: -2.78, rsi: 32.2, gapPercentage: -23.78, reversionProbability: 0.843, halfLife: 8.9, signalStrength: "STRONG", direction: "LONG" },
+            { ticker: "BRY", currentPrice: 41.50, meanPrice: 49.47, stdDev: 2.89, zScore: -2.75, rsi: 33.8, gapPercentage: -16.11, reversionProbability: 0.845, halfLife: 8.7, signalStrength: "STRONG", direction: "LONG" },
+            { ticker: "PARA", currentPrice: 12.45, meanPrice: 15.82, stdDev: 1.25, zScore: -2.70, rsi: 31.5, gapPercentage: -21.30, reversionProbability: 0.838, halfLife: 9.2, signalStrength: "STRONG", direction: "LONG" },
+            { ticker: "VFC", currentPrice: 18.23, meanPrice: 22.15, stdDev: 1.52, zScore: -2.58, rsi: 34.2, gapPercentage: -17.70, reversionProbability: 0.825, halfLife: 8.5, signalStrength: "STRONG", direction: "LONG" },
+            { ticker: "WBA", currentPrice: 14.56, meanPrice: 18.92, stdDev: 1.72, zScore: -2.53, rsi: 29.8, gapPercentage: -23.04, reversionProbability: 0.855, halfLife: 7.8, signalStrength: "STRONG", direction: "LONG" },
+            { ticker: "MMM", currentPrice: 98.45, meanPrice: 115.30, stdDev: 6.85, zScore: -2.46, rsi: 35.6, gapPercentage: -14.61, reversionProbability: 0.812, halfLife: 9.5, signalStrength: "STRONG", direction: "LONG" },
+            { ticker: "NKE", currentPrice: 78.32, meanPrice: 92.45, stdDev: 5.82, zScore: -2.43, rsi: 32.8, gapPercentage: -15.28, reversionProbability: 0.818, halfLife: 8.8, signalStrength: "STRONG", direction: "LONG" }
+        ];
+
+        // Add price history to each stock
+        stockData.forEach(stock => {
+            stock.priceHistory = generatePriceHistory(stock.meanPrice, stock.stdDev, stock.zScore);
+        });
+
+        let selectedTicker = stockData[0].ticker;
+        let viewMode = 'cards';
+        let detailChart = null;
+        let sparklineCharts = {};
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('timestamp').textContent = 'Last updated: ' + new Date().toLocaleString();
+            
+            renderStats();
+            renderStockList();
+            renderTable();
+            renderDetailPanel();
+            
+            // Event listeners
+            document.getElementById('methodology-toggle').addEventListener('click', toggleMethodology);
+            document.getElementById('btn-cards').addEventListener('click', () => setViewMode('cards'));
+            document.getElementById('btn-table').addEventListener('click', () => setViewMode('table'));
+        });
+
+        function toggleMethodology() {
+            const content = document.getElementById('methodology-content');
+            const icon = document.getElementById('methodology-icon');
+            content.classList.toggle('open');
+            icon.textContent = content.classList.contains('open') ? '−' : '+';
+        }
+
+        function setViewMode(mode) {
+            viewMode = mode;
+            document.getElementById('btn-cards').className = 'toggle-btn ' + (mode === 'cards' ? 'active' : 'inactive');
+            document.getElementById('btn-table').className = 'toggle-btn ' + (mode === 'table' ? 'active' : 'inactive');
+            document.getElementById('stock-list').className = mode === 'cards' ? 'stock-list' : 'stock-list hidden';
+            document.getElementById('table-container').className = mode === 'table' ? 'glass-card table-container' : 'glass-card table-container hidden';
+        }
+
+        function selectStock(ticker) {
+            selectedTicker = ticker;
+            renderStockList();
+            renderTable();
+            renderDetailPanel();
+        }
+
+        function renderStats() {
+            const avgProb = (stockData.reduce((sum, s) => sum + s.reversionProbability, 0) / stockData.length * 100).toFixed(1);
+            const avgZScore = (stockData.reduce((sum, s) => sum + s.zScore, 0) / stockData.length).toFixed(2);
+            
+            document.getElementById('stats-grid').innerHTML = `
+                <div class="glass-card stat-card">
+                    <p class="stat-label">Total Candidates</p>
+                    <p class="stat-value">${stockData.length}</p>
+                </div>
+                <div class="glass-card stat-card glow-green">
+                    <p class="stat-label">Signal Type</p>
+                    <p class="stat-value green">LONG</p>
+                </div>
+                <div class="glass-card stat-card">
+                    <p class="stat-label">Avg Z-Score</p>
+                    <p class="stat-value green">${avgZScore}</p>
+                </div>
+                <div class="glass-card stat-card">
+                    <p class="stat-label">Avg Probability</p>
+                    <p class="stat-value blue">${avgProb}%</p>
+                </div>
+            `;
+        }
+
+        function renderStockList() {
+            const container = document.getElementById('stock-list');
+            container.innerHTML = stockData.map(stock => {
+                const isLong = stock.direction === "LONG";
+                const isSelected = stock.ticker === selectedTicker;
+                let cardClass = "glass-card stock-card";
+                if (isSelected) cardClass += isLong ? " glow-green selected" : " glow-red selected";
+                
+                return `
+                    <div class="${cardClass}" onclick="selectStock('${stock.ticker}')">
+                        <div class="stock-card-header">
+                            <div>
+                                <div class="stock-ticker">${stock.ticker}</div>
+                                <span class="direction-badge ${isLong ? 'long' : 'short'}">
+                                    ${isLong ? '↑ LONG' : '↓ SHORT'}
+                                </span>
+                            </div>
+                            <div class="stock-price">
+                                <div class="stock-price-value">$${stock.currentPrice.toFixed(2)}</div>
+                                <div class="stock-gap ${stock.gapPercentage >= 0 ? 'positive' : 'negative'}">
+                                    ${stock.gapPercentage >= 0 ? '+' : ''}${stock.gapPercentage.toFixed(1)}% from mean
+                                </div>
+                            </div>
+                        </div>
+                        <div class="stock-metrics">
+                            <div>
+                                <p class="metric-label">Z-Score</p>
+                                <p class="metric-value ${stock.zScore >= 0 ? 'red' : 'green'}">
+                                    ${stock.zScore >= 0 ? '+' : ''}${stock.zScore.toFixed(2)}
+                                </p>
+                            </div>
+                            <div>
+                                <p class="metric-label">RSI</p>
+                                <p class="metric-value ${stock.rsi > 70 ? 'red' : stock.rsi < 30 ? 'green' : 'gray'}">
+                                    ${stock.rsi.toFixed(1)}
+                                </p>
+                            </div>
+                            <div>
+                                <p class="metric-label">Probability</p>
+                                <p class="metric-value blue">${(stock.reversionProbability * 100).toFixed(0)}%</p>
+                            </div>
+                        </div>
+                        <div class="sparkline-container">
+                            <canvas id="sparkline-${stock.ticker}" height="50"></canvas>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            // Render sparklines
+            stockData.forEach(stock => {
+                renderSparkline(stock);
+            });
+        }
+
+        function renderSparkline(stock) {
+            const canvas = document.getElementById('sparkline-' + stock.ticker);
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const data = stock.priceHistory.slice(-30);
+            const isLong = stock.direction === "LONG";
+            
+            if (sparklineCharts[stock.ticker]) {
+                sparklineCharts[stock.ticker].destroy();
+            }
+            
+            sparklineCharts[stock.ticker] = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d.date),
+                    datasets: [{
+                        data: data.map(d => d.price),
+                        borderColor: isLong ? '#22c55e' : '#ef4444',
+                        borderWidth: 1.5,
+                        fill: false,
+                        tension: 0.1,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { display: false },
+                        y: { display: false }
+                    },
+                    animation: false
+                }
+            });
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = stockData.map(stock => {
+                const isSelected = stock.ticker === selectedTicker;
+                return `
+                    <tr class="${isSelected ? 'selected' : ''}" onclick="selectStock('${stock.ticker}')">
+                        <td class="table-ticker">${stock.ticker}</td>
+                        <td class="table-cell right">$${stock.currentPrice.toFixed(2)}</td>
+                        <td class="table-cell right">$${stock.meanPrice.toFixed(2)}</td>
+                        <td class="table-cell right" style="color: ${stock.zScore >= 0 ? '#ef4444' : '#22c55e'}; font-weight: 500;">
+                            ${stock.zScore >= 0 ? '+' : ''}${stock.zScore.toFixed(2)}
+                        </td>
+                        <td class="table-cell right" style="color: ${stock.rsi > 70 ? '#ef4444' : stock.rsi < 30 ? '#22c55e' : '#d1d5db'};">
+                            ${stock.rsi.toFixed(1)}
+                        </td>
+                        <td class="table-cell right" style="color: #3b82f6;">${(stock.reversionProbability * 100).toFixed(0)}%</td>
+                        <td class="table-cell center">
+                            <span class="strength-badge ${stock.signalStrength.toLowerCase()}">${stock.signalStrength}</span>
+                        </td>
+                        <td class="table-cell center">
+                            <span class="direction-badge ${stock.direction.toLowerCase()}">${stock.direction === 'LONG' ? '↑ LONG' : '↓ SHORT'}</span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function renderDetailPanel() {
+            const stock = stockData.find(s => s.ticker === selectedTicker);
+            if (!stock) return;
+            
+            const isLong = stock.direction === "LONG";
+            const panel = document.getElementById('detail-panel');
+            
+            panel.innerHTML = `
+                <div class="detail-header">
+                    <div>
+                        <h2 class="detail-title">${stock.ticker}</h2>
+                        <p class="detail-subtitle">100-Day Price History</p>
+                    </div>
+                    <div class="signal-badge ${isLong ? 'long' : 'short'}">
+                        ${isLong ? '↑ LONG SIGNAL' : '↓ SHORT SIGNAL'}
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="detail-chart"></canvas>
+                </div>
+                <div class="metrics-grid">
+                    <div class="metric-box">
+                        <p class="metric-box-label">Current Price</p>
+                        <p class="metric-box-value">$${stock.currentPrice.toFixed(2)}</p>
+                    </div>
+                    <div class="metric-box">
+                        <p class="metric-box-label">100-Day Mean</p>
+                        <p class="metric-box-value">$${stock.meanPrice.toFixed(2)}</p>
+                    </div>
+                    <div class="metric-box">
+                        <p class="metric-box-label">Std Deviation</p>
+                        <p class="metric-box-value">$${stock.stdDev.toFixed(2)}</p>
+                    </div>
+                    <div class="metric-box">
+                        <p class="metric-box-label">Gap from Mean</p>
+                        <p class="metric-box-value" style="color: ${stock.gapPercentage >= 0 ? '#ef4444' : '#22c55e'};">
+                            ${stock.gapPercentage >= 0 ? '+' : ''}${stock.gapPercentage.toFixed(1)}%
+                        </p>
+                    </div>
+                    <div class="metric-box">
+                        <p class="metric-box-label">Z-Score</p>
+                        <p class="metric-box-value" style="color: ${stock.zScore >= 0 ? '#ef4444' : '#22c55e'};">
+                            ${stock.zScore >= 0 ? '+' : ''}${stock.zScore.toFixed(2)}
+                        </p>
+                    </div>
+                    <div class="metric-box">
+                        <p class="metric-box-label">RSI (14)</p>
+                        <p class="metric-box-value" style="color: ${stock.rsi > 70 ? '#ef4444' : stock.rsi < 30 ? '#22c55e' : '#d1d5db'};">
+                            ${stock.rsi.toFixed(1)}
+                        </p>
+                    </div>
+                    <div class="metric-box">
+                        <p class="metric-box-label">Half-Life</p>
+                        <p class="metric-box-value">${stock.halfLife.toFixed(1)} days</p>
+                    </div>
+                    <div class="metric-box">
+                        <p class="metric-box-label">Reversion Prob</p>
+                        <p class="metric-box-value" style="color: #3b82f6;">${(stock.reversionProbability * 100).toFixed(1)}%</p>
+                    </div>
+                </div>
+            `;
+            
+            renderDetailChart(stock);
+        }
+
+        function renderDetailChart(stock) {
+            const canvas = document.getElementById('detail-chart');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const data = stock.priceHistory;
+            
+            if (detailChart) {
+                detailChart.destroy();
+            }
+            
+            // Create annotation lines data
+            const meanLine = Array(data.length).fill(stock.meanPrice);
+            const upper1 = Array(data.length).fill(stock.meanPrice + stock.stdDev);
+            const lower1 = Array(data.length).fill(stock.meanPrice - stock.stdDev);
+            const upper2 = Array(data.length).fill(stock.meanPrice + 2 * stock.stdDev);
+            const lower2 = Array(data.length).fill(stock.meanPrice - 2 * stock.stdDev);
+            
+            detailChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => {
+                        const date = new Date(d.date);
+                        return (date.getMonth() + 1) + '/' + date.getDate();
+                    }),
+                    datasets: [
+                        {
+                            label: 'Price',
+                            data: data.map(d => d.price),
+                            borderColor: '#3b82f6',
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0.1,
+                            pointRadius: 0
+                        },
+                        {
+                            label: 'Mean',
+                            data: meanLine,
+                            borderColor: '#22c55e',
+                            borderWidth: 2,
+                            borderDash: [],
+                            fill: false,
+                            pointRadius: 0
+                        },
+                        {
+                            label: '+1σ',
+                            data: upper1,
+                            borderColor: '#f59e0b',
+                            borderWidth: 1,
+                            borderDash: [5, 5],
+                            fill: false,
+                            pointRadius: 0
+                        },
+                        {
+                            label: '-1σ',
+                            data: lower1,
+                            borderColor: '#f59e0b',
+                            borderWidth: 1,
+                            borderDash: [5, 5],
+                            fill: false,
+                            pointRadius: 0
+                        },
+                        {
+                            label: '+2σ',
+                            data: upper2,
+                            borderColor: '#ef4444',
+                            borderWidth: 1,
+                            borderDash: [3, 3],
+                            fill: false,
+                            pointRadius: 0
+                        },
+                        {
+                            label: '-2σ',
+                            data: lower2,
+                            borderColor: '#ef4444',
+                            borderWidth: 1,
+                            borderDash: [3, 3],
+                            fill: false,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                color: '#9ca3af',
+                                usePointStyle: true,
+                                padding: 15,
+                                filter: function(item) {
+                                    return ['Price', 'Mean', '+1σ', '+2σ'].includes(item.text);
+                                }
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1f2937',
+                            titleColor: '#9ca3af',
+                            bodyColor: '#e5e7eb',
+                            borderColor: '#374151',
+                            borderWidth: 1,
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.dataset.label === 'Price') {
+                                        return 'Price: $' + context.raw.toFixed(2);
+                                    }
+                                    return null;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(55, 65, 81, 0.5)' },
+                            ticks: { color: '#9ca3af', maxTicksLimit: 10 }
+                        },
+                        y: {
+                            grid: { color: 'rgba(55, 65, 81, 0.5)' },
+                            ticks: {
+                                color: '#9ca3af',
+                                callback: function(value) { return '$' + value.toFixed(0); }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
