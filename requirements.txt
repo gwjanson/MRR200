@@ -1,5 +1,5 @@
---upgrade pip setuptools wheel
-
+setuptools>=65.0.0
+wheel
 flask==3.0.0
 gunicorn==21.2.0
 yfinance==0.2.36
