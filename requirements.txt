@@ -1,3 +1,5 @@
+--upgrade pip setuptools wheel
+
 flask==3.0.0
 gunicorn==21.2.0
 yfinance==0.2.36
@@ -7,4 +9,3 @@ scipy==1.10.1
 requests==2.31.0
 beautifulsoup4==4.12.2
 lxml==4.9.3
-html5lib==1.1
